@@ -1,11 +1,13 @@
 package org.lab41.graphlab.twill;
 
+import com.google.common.collect.ImmutableMap;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.recipes.barriers.DistributedDoubleBarrier;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.twill.api.AbstractTwillRunnable;
+import org.apache.twill.api.ResourceSpecification;
 import org.apache.twill.api.TwillController;
 import org.apache.twill.api.TwillRunnerService;
 import org.apache.twill.api.logging.PrinterLogHandler;
@@ -24,51 +26,56 @@ public class GraphlabApplication {
 
     private static class GraphlabRunnable extends AbstractTwillRunnable {
 
+        public GraphlabRunnable(String zkStr, int count) {
+            super(ImmutableMap.of("zkStr", zkStr, "count", Integer.toString(count)));
+        }
+
         @Override
         public void run() {
             String zkStr = getArgument("zkStr");
+            int count = Integer.parseInt(getArgument("count"));
 
             System.err.println("weee: " + zkStr);
             LOG.error("weee: " + zkStr);
 
-            for(String x: getArguments().keySet()) {
-                LOG.error("arg: " + x + " " + getArgument(x));
-            }
-
-            /*
             CuratorFramework client = CuratorFrameworkFactory.builder()
                     .connectString(zkStr)
-                    .retryPolicy(new ExponentialBackoffRetry(1000, 3))
+                    .retryPolicy(new ExponentialBackoffRetry(1000, count))
                     .build();
 
             client.start();
 
-            DistributedDoubleBarrier barrier = new DistributedDoubleBarrier(client, "/mypath", 1);
+            DistributedDoubleBarrier barrier = new DistributedDoubleBarrier(client, "/mypath", count);
 
             LOG.error("entering barrier");
 
             try {
-                barrier.enter(5, TimeUnit.SECONDS);
-            } catch (e) {
-                LOG.error("hey", e);
-                e.printStackTrace();
-                return;
-            }
+                if (!barrier.enter(1, TimeUnit.SECONDS)) {
+                    LOG.error("failed to enter barrier");
+                    return;
+                }
 
-            System.err.println("weee");
-            LOG.error("in barrier");
+                LOG.error("in barrier");
 
-            try {
-                barrier.leave(5, TimeUnit.SECONDS);
+                try {
+                    TimeUnit.SECONDS.sleep(5);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                LOG.error("woken up");
+
+                if (!barrier.leave(1, TimeUnit.SECONDS)) {
+                    LOG.error("failed to leave barrier");
+                    return;
+                }
+
+                LOG.error("out of barrier");
+
             } catch (Exception e) {
-                LOG.error("hey", e);
+                LOG.error("error", e);
                 e.printStackTrace();
-                return;
             }
-            */
-
-            System.err.println("weee");
-            LOG.error("out of barrier");
         }
     }
 
@@ -79,13 +86,21 @@ public class GraphlabApplication {
         }
 
         String zkStr = args[0];
+        int count = Integer.parseInt(args[1]);
+        int instances = Integer.parseInt(args[2]);
 
         final TwillRunnerService twillRunner = new YarnTwillRunnerService(new YarnConfiguration(), zkStr);
         twillRunner.startAndWait();
 
-        final TwillController controller = twillRunner.prepare(new GraphlabRunnable())
+        ResourceSpecification resources = ResourceSpecification.Builder
+                .with()
+                .setVirtualCores(1)
+                .setMemory(512, ResourceSpecification.SizeUnit.MEGA)
+                .setInstances(instances)
+                .build();
+
+        final TwillController controller = twillRunner.prepare(new GraphlabRunnable(zkStr, count), resources)
                 .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)))
-                .withArguments("zkStr", zkStr)
                 .start();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {

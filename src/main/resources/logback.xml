@@ -6,10 +6,14 @@
         </encoder>
     </appender>
 
-    <logger name="org.lab41.graphlab.twill" level="DEBUG" />
+    <logger name="org.apache.curator" level="WARN" />
     <logger name="org.apache.hadoop" level="WARN" />
+    <logger name="org.apache.hadoop.hdfs" level="WARN" />
+    <logger name="org.apache.hadoop.ipc" level="WARN" />
+    <logger name="org.apache.kafka" level="WARN" />
     <logger name="org.apache.twill" level="WARN" />
     <logger name="org.apache.zookeeper" level="WARN" />
+    <logger name="org.lab41.graphlab.twill" level="DEBUG" />
 
     <root level="DEBUG">
         <appender-ref ref="STDOUT"/>
