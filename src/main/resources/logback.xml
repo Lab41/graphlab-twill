@@ -13,7 +13,7 @@
     <logger name="org.apache.kafka" level="WARN" />
     <logger name="org.apache.twill" level="WARN" />
     <logger name="org.apache.zookeeper" level="WARN" />
-    <logger name="org.lab41.graphlab.twill" level="DEBUG" />
+    <logger name="org.lab41" level="DEBUG" />
 
     <root level="DEBUG">
         <appender-ref ref="STDOUT"/>
