@@ -19,6 +19,9 @@ public class GraphlabApplication implements TwillApplication {
 
     @Override
     public TwillSpecification configure() {
+        return null;
+
+        /*
         TwillSpecification.Builder.MoreRunnable x = TwillSpecification.Builder.with()
                 .setName("GraphlabApplication")
                 .withRunnable()
@@ -29,5 +32,6 @@ public class GraphlabApplication implements TwillApplication {
         }
 
         x.add()
+        */
     }
 }

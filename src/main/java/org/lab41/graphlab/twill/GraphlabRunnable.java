@@ -3,12 +3,9 @@ package org.lab41.graphlab.twill;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.framework.recipes.barriers.DistributedDoubleBarrier;
-import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.twill.api.AbstractTwillRunnable;
 import org.apache.twill.api.TwillContext;
+import org.apache.twill.synchronization.DoubleBarrier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,19 +21,15 @@ class GraphlabRunnable extends AbstractTwillRunnable {
 
     private static Logger LOG = LoggerFactory.getLogger(Main.class);
 
-    private static final String SERVICE_NAME = "service";
-
-    public GraphlabRunnable(String zkStr, String zkPath, int barrierSleep, int sleep) {
+    public GraphlabRunnable(String barrierName, int barrierWaitTime, int finishedSleepTime) {
         super(ImmutableMap.of(
-                "zkStr", zkStr,
-                "zkPath", zkPath,
-                "barrierWaitTime", Integer.toString(barrierSleep),
-                "finishedSleepTime", Integer.toString(sleep)));
+                "barrierName", barrierName,
+                "barrierWaitTime", Integer.toString(barrierWaitTime),
+                "finishedSleepTime", Integer.toString(finishedSleepTime)));
     }
 
     public void run() {
-        String zkStr = getArgument("zkStr");
-        String zkPath = getArgument("zkPath");
+        String barrierName = getArgument("barrierName");
         int barrierWaitTime = Integer.parseInt(getArgument("barrierWaitTime"));
         int finishedSleepTime = Integer.parseInt(getArgument("finishedSleepTime"));
 
@@ -44,26 +37,14 @@ class GraphlabRunnable extends AbstractTwillRunnable {
         int instanceCount = context.getInstanceCount();
         int virtualCores = context.getVirtualCores();
 
-        CuratorFramework client = CuratorFrameworkFactory.builder()
-                .connectString(zkStr)
-                .retryPolicy(new ExponentialBackoffRetry(1000, 3))
-                .namespace(zkPath)
-                .build();
-
-        client.start();
-
         try {
-            DistributedDoubleBarrier barrier;
-            barrier = new DistributedDoubleBarrier(client, "barrier", instanceCount);
+            LOG.debug("creating barrier {} with {} parties", barrierName, instanceCount);
+
+            DoubleBarrier barrier = this.getContext().getDoubleBarrier(barrierName, instanceCount);
 
             LOG.debug("entering barrier");
 
-            if (instanceCount > 1) {
-                if (!barrier.enter(finishedSleepTime, TimeUnit.SECONDS)) {
-                    LOG.error("failed to enter barrier");
-                    return;
-                }
-            }
+            barrier.enter(finishedSleepTime, TimeUnit.SECONDS);
 
             LOG.debug("entered barrier");
 
@@ -88,12 +69,7 @@ class GraphlabRunnable extends AbstractTwillRunnable {
 
             LOG.debug("leaving barrier");
 
-            if (instanceCount > 1) {
-                if (!barrier.leave(barrierWaitTime, TimeUnit.SECONDS)) {
-                    LOG.error("failed to leave barrier");
-                    return;
-                }
-            }
+            barrier.leave(barrierWaitTime, TimeUnit.SECONDS);
 
             LOG.debug("left barrier");
 

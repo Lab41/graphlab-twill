@@ -77,7 +77,7 @@ public class Main {
 
         String zkPath = UUID.randomUUID().toString();
 
-        final TwillController controller = twillRunner.prepare(new GraphlabRunnable(), resources)
+        final TwillController controller = twillRunner.prepare(new GraphlabRunnable("barrier", barrierWaitTime, finishedSleepTime), resources)
                 .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)))
                 //.enableDebugging()
                 .start();
