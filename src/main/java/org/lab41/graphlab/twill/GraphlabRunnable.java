@@ -5,13 +5,19 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.twill.api.AbstractTwillRunnable;
 import org.apache.twill.api.TwillContext;
+import org.apache.twill.common.Cancellable;
+import org.apache.twill.discovery.Discoverable;
+import org.apache.twill.discovery.ServiceDiscovered;
 import org.apache.twill.synchronization.DoubleBarrier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -21,21 +27,29 @@ class GraphlabRunnable extends AbstractTwillRunnable {
 
     private static Logger LOG = LoggerFactory.getLogger(Main.class);
 
-    public GraphlabRunnable(String barrierName, int barrierWaitTime, int finishedSleepTime) {
+    private static final String SERVICE_NAME = "graphlab";
+
+    public GraphlabRunnable(String zkStr, String barrierName, int barrierWaitTime, int finishedSleepTime) {
         super(ImmutableMap.of(
+                "zkStr", zkStr,
                 "barrierName", barrierName,
                 "barrierWaitTime", Integer.toString(barrierWaitTime),
-                "finishedSleepTime", Integer.toString(finishedSleepTime)));
+                "finishedSleepTime", Integer.toString(finishedSleepTime),
+                "jobName", UUID.randomUUID().toString()));
     }
 
     public void run() {
+        String zkStr = getArgument("zkStr");
         String barrierName = getArgument("barrierName");
         int barrierWaitTime = Integer.parseInt(getArgument("barrierWaitTime"));
         int finishedSleepTime = Integer.parseInt(getArgument("finishedSleepTime"));
+        String jobName = getArgument("jobName");
 
         TwillContext context = getContext();
         int instanceCount = context.getInstanceCount();
         int virtualCores = context.getVirtualCores();
+
+        Cancellable cancellable = this.getContext().announce(SERVICE_NAME, 0);
 
         try {
             LOG.debug("creating barrier {} with {} parties", barrierName, instanceCount);
@@ -44,7 +58,7 @@ class GraphlabRunnable extends AbstractTwillRunnable {
 
             LOG.debug("entering barrier");
 
-            barrier.enter(finishedSleepTime, TimeUnit.SECONDS);
+            barrier.enter(barrierWaitTime, TimeUnit.SECONDS);
 
             LOG.debug("entered barrier");
 
@@ -52,9 +66,15 @@ class GraphlabRunnable extends AbstractTwillRunnable {
                     "/home/etryzelaar/run"
             );
 
-            Process process = new ProcessBuilder(args)
-                    .redirectErrorStream(true)
-                    .start();
+            ProcessBuilder processBuilder = new ProcessBuilder(args)
+                    .redirectErrorStream(true);
+
+            Map<String, String> env = processBuilder.environment();
+            env.put("ZK_SERVERS", zkStr);
+            env.put("ZK_JOBNAME", jobName);
+            env.put("ZK_NUMNODES", Integer.toString(instanceCount));
+
+            Process process = processBuilder.start();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), Charsets.US_ASCII))) {
                 String line = reader.readLine();
@@ -84,5 +104,7 @@ class GraphlabRunnable extends AbstractTwillRunnable {
             LOG.error("error", e);
             e.printStackTrace();
         }
+
+        cancellable.cancel();
     }
 }

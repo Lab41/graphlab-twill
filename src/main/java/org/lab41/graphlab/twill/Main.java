@@ -20,9 +20,11 @@ public class Main {
     private static Logger LOG = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
-        CommandLineParser parser = new BasicParser();
+        CommandLineParser parser = new GnuParser();
 
         Options options = new Options();
+
+        options.addOption("h", "help", false, "print this message");
         options.addOption("i", "instances", true, "number of instances");
         options.addOption("t", "threads", true, "number of threads");
         options.addOption("b", "barrier-wait-time", true, "how long to sleep for");
@@ -36,26 +38,36 @@ public class Main {
         try {
             CommandLine line = parser.parse(options, args);
 
-            String option;
-            if ((option = options.getOption("instances").getValue()) != null) {
+            if (line.hasOption("help")) {
+                HelpFormatter formatter = new HelpFormatter();
+                formatter.printHelp("java -cp twill-graphlab-1.0-SNAPSHOT.jar org.lab41.graphlab.twill.Main [options] zookeeper-address", options);
+                System.exit(0);
+            }
+
+            if (line.hasOption("instances")) {
+                String option = line.getOptionValue("instances");
                 instanceCount = Integer.parseInt(option);
             }
 
-            if ((option = options.getOption("threads").getValue()) != null) {
+            if (line.hasOption("threads")) {
+                String option = line.getOptionValue("threads");
                 virtualCores = Integer.parseInt(option);
             }
 
-            if ((option = options.getOption("barrier-wait-time").getValue()) != null) {
+            if (line.hasOption("barrier-wait-time")) {
+                String option = line.getOptionValue("barrier-wait-time");
                 barrierWaitTime = Integer.parseInt(option);
             }
 
-            if ((option = options.getOption("finished-sleep-time").getValue()) != null) {
+            if (line.hasOption("finished-sleep-time")) {
+                String option = line.getOptionValue("finished-sleep-time");
                 finishedSleepTime = Integer.parseInt(option);
             }
 
             args = line.getArgs();
 
         } catch (ParseException e) {
+            System.out.println("error: " + e);
             System.exit(1);
         }
 
@@ -75,11 +87,11 @@ public class Main {
                 .setInstances(instanceCount)
                 .build();
 
-        String zkPath = UUID.randomUUID().toString();
+        GraphlabRunnable runnable = new GraphlabRunnable(zkStr, "barrier", barrierWaitTime, finishedSleepTime);
 
-        final TwillController controller = twillRunner.prepare(new GraphlabRunnable("barrier", barrierWaitTime, finishedSleepTime), resources)
+        final TwillController controller = twillRunner.prepare(runnable, resources)
                 .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)))
-                //.enableDebugging()
+                //.enableDebugging(true)
                 .start();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
