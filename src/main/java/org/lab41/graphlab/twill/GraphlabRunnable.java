@@ -1,23 +1,15 @@
 package org.lab41.graphlab.twill;
 
 import com.google.common.base.Charsets;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import org.apache.twill.api.AbstractTwillRunnable;
-import org.apache.twill.api.TwillContext;
-import org.apache.twill.common.Cancellable;
-import org.apache.twill.discovery.Discoverable;
-import org.apache.twill.discovery.ServiceDiscovered;
+import com.google.common.base.Preconditions;
+import org.apache.twill.api.*;
 import org.apache.twill.synchronization.DoubleBarrier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -25,31 +17,65 @@ import java.util.concurrent.TimeUnit;
 */
 class GraphlabRunnable extends AbstractTwillRunnable {
 
-    private static Logger LOG = LoggerFactory.getLogger(Main.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
-    private static final String SERVICE_NAME = "graphlab";
+    private static final int BARRIER_WAIT_TIME = 60;
+    private static final TimeUnit BARRIER_WAIT_UNIT = TimeUnit.SECONDS;
 
-    public GraphlabRunnable(String zkStr, String barrierName, int barrierWaitTime, int finishedSleepTime) {
-        super(ImmutableMap.of(
-                "zkStr", zkStr,
-                "barrierName", barrierName,
-                "barrierWaitTime", Integer.toString(barrierWaitTime),
-                "finishedSleepTime", Integer.toString(finishedSleepTime),
-                "jobName", UUID.randomUUID().toString()));
+    private Arguments arguments;
+
+    @Override
+    public TwillRunnableSpecification configure() {
+        return TwillRunnableSpecification.Builder.with()
+                .setName(getClass().getSimpleName())
+                .noConfigs()
+                .build();
     }
 
+    @Override
+    public void initialize(TwillContext context) {
+        super.initialize(context);
+        arguments = Arguments.fromArray(context.getArguments());
+    }
+
+    @Override
+    public void handleCommand(Command command) throws Exception {
+
+    }
+
+    @Override
+    public void stop() {
+
+    }
+
+    @Override
+    public void destroy() {
+
+    }
+
+    @Override
     public void run() {
-        String zkStr = getArgument("zkStr");
-        String barrierName = getArgument("barrierName");
-        int barrierWaitTime = Integer.parseInt(getArgument("barrierWaitTime"));
-        int finishedSleepTime = Integer.parseInt(getArgument("finishedSleepTime"));
-        String jobName = getArgument("jobName");
+        Preconditions.checkNotNull(arguments);
 
         TwillContext context = getContext();
-        int instanceCount = context.getInstanceCount();
-        int virtualCores = context.getVirtualCores();
+        Preconditions.checkNotNull(context);
 
-        Cancellable cancellable = this.getContext().announce(SERVICE_NAME, 0);
+        String graphlabPath = arguments.getGraphlabPath();
+        Preconditions.checkNotNull(graphlabPath);
+
+        String[] graphlabArgs = arguments.getGraphlabArgs();
+        Preconditions.checkNotNull(graphlabArgs);
+
+        List<String> args = new ArrayList<>();
+        args.add(graphlabPath);
+        Collections.addAll(args, graphlabArgs);
+
+        String zkStr = System.getenv("TWILL_ZK_CONNECT");
+        Preconditions.checkNotNull(zkStr);
+
+        int instanceCount = context.getInstanceCount();
+        String runId = context.getApplicationRunId().getId();
+        String barrierName = runId + "/barrier";
 
         try {
             LOG.debug("creating barrier {} with {} parties", barrierName, instanceCount);
@@ -58,44 +84,42 @@ class GraphlabRunnable extends AbstractTwillRunnable {
 
             LOG.debug("entering barrier");
 
-            barrier.enter(barrierWaitTime, TimeUnit.SECONDS);
+            barrier.enter(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
 
-            LOG.debug("entered barrier");
+            try {
+                LOG.debug("entered barrier");
 
-            List<String> args = ImmutableList.of(
-                    "/home/etryzelaar/run"
-            );
+                ProcessBuilder processBuilder = new ProcessBuilder(args)
+                        .redirectErrorStream(true);
 
-            ProcessBuilder processBuilder = new ProcessBuilder(args)
-                    .redirectErrorStream(true);
+                Map<String, String> env = processBuilder.environment();
+                env.put("ZK_SERVERS", zkStr);
+                env.put("ZK_JOBNAME", "graphlab-workers");
+                env.put("ZK_NUMNODES", Integer.toString(instanceCount));
 
-            Map<String, String> env = processBuilder.environment();
-            env.put("ZK_SERVERS", zkStr);
-            env.put("ZK_JOBNAME", jobName);
-            env.put("ZK_NUMNODES", Integer.toString(instanceCount));
+                Process process = processBuilder.start();
 
-            Process process = processBuilder.start();
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), Charsets.US_ASCII))) {
-                String line = reader.readLine();
-                while (line != null) {
-                    LOG.info(line);
-                    line = reader.readLine();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), Charsets.US_ASCII))) {
+                    String line = reader.readLine();
+                    while (line != null) {
+                        LOG.info(line);
+                        line = reader.readLine();
+                    }
                 }
+
+                // Ignore errors for now.
+                process.waitFor();
+            } finally {
+                LOG.debug("leaving barrier");
+
+                barrier.leave(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
+
+                LOG.debug("left barrier");
             }
-
-            // Ignore errors for now.
-            process.waitFor();
-
-            LOG.debug("leaving barrier");
-
-            barrier.leave(barrierWaitTime, TimeUnit.SECONDS);
-
-            LOG.debug("left barrier");
 
             // FIXME: work around a Twill bug where Kafka won't send all the messages unless we sleep for a little bit.
             try {
-                TimeUnit.SECONDS.sleep(finishedSleepTime);
+                TimeUnit.SECONDS.sleep(1);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -104,7 +128,58 @@ class GraphlabRunnable extends AbstractTwillRunnable {
             LOG.error("error", e);
             e.printStackTrace();
         }
+    }
 
-        cancellable.cancel();
+    public static class Arguments {
+        private final String graphlabPath;
+        private final String[] graphlabArgs;
+
+        public Arguments(String graphlabPath, String[] graphlabArgs) {
+            this.graphlabPath = graphlabPath;
+            this.graphlabArgs = graphlabArgs;
+        }
+
+        public String getGraphlabPath() {
+            return graphlabPath;
+        }
+
+        public String[] getGraphlabArgs() {
+            return graphlabArgs;
+        }
+
+        public String[] toArray() {
+            String[] result = new String[1 + graphlabArgs.length];
+            result[0] = graphlabPath;
+            System.arraycopy(graphlabArgs, 0, result, 1, graphlabArgs.length);
+            return result;
+        }
+
+        public static Arguments fromArray(String[] args) {
+            Builder builder = new Builder();
+            builder.setGraphlabPath(args[0]);
+            builder.setGraphlabArgs(Arrays.copyOfRange(args, 1, args.length));
+            return builder.createArguments();
+        }
+
+        public static class Builder {
+            private String graphlabPath;
+            private String[] graphlabArgs;
+
+            public Builder() {}
+
+            public Builder setGraphlabPath(String graphlabPath) {
+                this.graphlabPath = graphlabPath;
+                return this;
+            }
+
+            public Builder setGraphlabArgs(String... graphlabArgs) {
+                this.graphlabArgs = graphlabArgs;
+                return this;
+            }
+
+            public Arguments createArguments() {
+                return new Arguments(graphlabPath, graphlabArgs);
+            }
+        }
     }
 }

@@ -2,9 +2,7 @@ package org.lab41.graphlab.twill;
 
 import org.apache.commons.cli.*;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.twill.api.ResourceSpecification;
-import org.apache.twill.api.TwillController;
-import org.apache.twill.api.TwillRunnerService;
+import org.apache.twill.api.*;
 import org.apache.twill.api.logging.PrinterLogHandler;
 import org.apache.twill.common.Services;
 import org.apache.twill.yarn.YarnTwillRunnerService;
@@ -12,12 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.PrintWriter;
-import java.util.UUID;
+import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 
 public class Main {
 
-    private static Logger LOG = LoggerFactory.getLogger(Main.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
         CommandLineParser parser = new GnuParser();
@@ -27,20 +25,16 @@ public class Main {
         options.addOption("h", "help", false, "print this message");
         options.addOption("i", "instances", true, "number of instances");
         options.addOption("t", "threads", true, "number of threads");
-        options.addOption("b", "barrier-wait-time", true, "how long to sleep for");
-        options.addOption("f", "finished-sleep-time", true, "how long to sleep for");
 
         int instanceCount = 1;
         int virtualCores = 1;
-        int barrierWaitTime = 10;
-        int finishedSleepTime = 10;
 
         try {
             CommandLine line = parser.parse(options, args);
 
             if (line.hasOption("help")) {
                 HelpFormatter formatter = new HelpFormatter();
-                formatter.printHelp("java -cp twill-graphlab-1.0-SNAPSHOT.jar org.lab41.graphlab.twill.Main [options] zookeeper-address", options);
+                formatter.printHelp("java -cp twill-graphlab-1.0-SNAPSHOT.jar org.lab41.graphlab.twill.Main [options] zookeeper-address graphlab-path", options);
                 System.exit(0);
             }
 
@@ -54,16 +48,6 @@ public class Main {
                 virtualCores = Integer.parseInt(option);
             }
 
-            if (line.hasOption("barrier-wait-time")) {
-                String option = line.getOptionValue("barrier-wait-time");
-                barrierWaitTime = Integer.parseInt(option);
-            }
-
-            if (line.hasOption("finished-sleep-time")) {
-                String option = line.getOptionValue("finished-sleep-time");
-                finishedSleepTime = Integer.parseInt(option);
-            }
-
             args = line.getArgs();
 
         } catch (ParseException e) {
@@ -71,12 +55,14 @@ public class Main {
             System.exit(1);
         }
 
-        if (args.length != 1) {
-            System.err.println("Arguments format: <host:port of zookeeper server>");
+        if (args.length != 2) {
+            System.err.println("Arguments format: <host:port of zookeeper server> graphlab-path [graphlab-args]");
             System.exit(1);
         }
 
         String zkStr = args[0];
+        GraphlabRunnable.Arguments arguments = GraphlabRunnable.Arguments.fromArray(
+                Arrays.copyOfRange(args, 1, args.length));
 
         final TwillRunnerService twillRunner = new YarnTwillRunnerService(new YarnConfiguration(), zkStr);
         twillRunner.startAndWait();
@@ -87,9 +73,8 @@ public class Main {
                 .setInstances(instanceCount)
                 .build();
 
-        GraphlabRunnable runnable = new GraphlabRunnable(zkStr, "barrier", barrierWaitTime, finishedSleepTime);
-
-        final TwillController controller = twillRunner.prepare(runnable, resources)
+        final TwillController controller = twillRunner.prepare(new GraphlabRunnable(), resources)
+                .withArguments("GraphlabRunnable", arguments.toArray())
                 .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)))
                 //.enableDebugging(true)
                 .start();
