@@ -46,7 +46,7 @@ public class Main {
         int virtualCores = 1;
 
         try {
-            CommandLine line = parser.parse(options, args);
+            CommandLine line = parser.parse(options, args, true);
 
             if (line.hasOption("help")) {
                 HelpFormatter formatter = new HelpFormatter();
@@ -71,7 +71,7 @@ public class Main {
             System.exit(1);
         }
 
-        if (args.length != 2) {
+        if (args.length < 2) {
             System.err.println("Arguments format: <host:port of zookeeper server> graphlab-path [graphlab-args]");
             System.exit(1);
         }
