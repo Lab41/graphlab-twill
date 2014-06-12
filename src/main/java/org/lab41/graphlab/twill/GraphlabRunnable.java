@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 /**
 * Created by etryzelaar on 5/20/14.
 */
-class GraphlabRunnable extends AbstractTwillRunnable {
+public class GraphlabRunnable extends AbstractTwillRunnable {
 
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
