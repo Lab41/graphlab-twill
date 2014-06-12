@@ -50,7 +50,7 @@ public class Main {
 
             if (line.hasOption("help")) {
                 HelpFormatter formatter = new HelpFormatter();
-                formatter.printHelp("java -cp twill-graphlab-1.0-SNAPSHOT.jar org.lab41.graphlab.twill.Main [options] zookeeper-address graphlab-path", options);
+                formatter.printHelp("java -cp graphlab-twill-1.0-SNAPSHOT.jar org.lab41.graphlab.twill.Main [options] zookeeper-address graphlab-path", options);
                 System.exit(0);
             }
 
@@ -98,13 +98,13 @@ public class Main {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
-                LOG.error("shutting down");
+                LOG.debug("shutting down");
                 controller.stopAndWait();
                 twillRunner.stopAndWait();
             }
         });
 
-        LOG.error("before getting completion");
+        LOG.debug("before getting completion");
 
         try {
             Services.getCompletionFuture(controller).get();
@@ -112,7 +112,7 @@ public class Main {
             e.printStackTrace();
         }
 
-        LOG.error("after shutting down");
+        LOG.debug("after shutting down");
     }
 
 }

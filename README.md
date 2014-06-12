@@ -1,6 +1,6 @@
 Graphlab-Twill
 ==============
-[![Build Status](https://travis-ci.org/Lab41/graphlab-twill.png?branch=master)](https://travis-ci.org/Lab41/graphlab-twill) [![Coverage Status](https://coveralls.io/repos/Lab41/Dendrite/badge.png)](https://coveralls.io/r/Lab41/graphlab-twill)
+[![Build Status](https://travis-ci.org/Lab41/graphlab-twill.png?branch=master)](https://travis-ci.org/Lab41/graphlab-twill) [![Coverage Status](https://coveralls.io/repos/Lab41/graphlab-twill/badge.png)](https://coveralls.io/r/Lab41/graphlab-twill)
 
 Graphlab-Twill is a Graphlab scheduler for YARN.
 
@@ -28,10 +28,18 @@ Install Instructions
     org.lab41.graphlab.twill.Main \
     --instances 5 \
     $ZOOKEEPER_URL \
+    sh -c '
+    export HADOOP_CONF_DIR=/etc/hadoop/conf;
+    export CLASSPATH=$(
+        for i in `hadoop classpath | sed "s/:/ /g"`; do
+        echo $i
+    done | xargs | sed "s/ /:/g"
+    );
     /path/to/graphlab/pagerank/on/cluster \
     --graph hdfs://$HDFS_URL/graph.tsv \
     --format tsv \
     --saveprefix hdfs://$HDFS_URL/graph_out
+    '
 ```
 
 Required Dependencies
@@ -51,5 +59,3 @@ Contributing to Graphlab-Twill
 ==============================
 
 What to contribute?  Awesome!  Issue a pull request or see more details [here](https://github.com/Lab41/graphlab-twill/blob/master/CONTRIBUTING.md).
-
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/Lab41/graphlab-twill/trend.png)](https://bitdeli.com/free "Bitdeli Badge")

@@ -91,18 +91,17 @@ class GraphlabRunnable extends AbstractTwillRunnable {
 
         int instanceCount = context.getInstanceCount();
         String runId = context.getApplicationRunId().getId();
-        String barrierName = runId + "/barrier";
 
         try {
-            LOG.debug("creating barrier {} with {} parties", barrierName, instanceCount);
+            LOG.debug("creating barrier {} with {} parties", runId, instanceCount);
 
-            DoubleBarrier barrier = this.getContext().getDoubleBarrier(barrierName, instanceCount);
+            DoubleBarrier barrier = this.getContext().getDoubleBarrier(runId, instanceCount);
 
             LOG.debug("entering barrier");
 
-            barrier.enter(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
-
             try {
+                barrier.enter(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
+
                 LOG.debug("entered barrier");
 
                 ProcessBuilder processBuilder = new ProcessBuilder(args)
