@@ -40,9 +40,9 @@ import java.util.concurrent.*;
 /**
 * Created by etryzelaar on 5/20/14.
 */
-public class GraphlabRunnable extends AbstractTwillRunnable {
+public class GraphLabRunnable extends AbstractTwillRunnable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(GraphlabRunnable.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GraphLabRunnable.class);
 
     private static final int BARRIER_WAIT_TIME = 60;
     private static final TimeUnit BARRIER_WAIT_UNIT = TimeUnit.SECONDS;
@@ -127,7 +127,7 @@ public class GraphlabRunnable extends AbstractTwillRunnable {
     private void runProcess(int instanceCount) throws ExecutionException, InterruptedException, IOException {
         FileSystem fileSystem = FileSystem.get(new Configuration());
 
-        File graphLabPath = arguments.getGraphlabPath();
+        File graphLabPath = arguments.getGraphLabPath();
         Preconditions.checkNotNull(graphLabPath);
         Preconditions.checkArgument(graphLabPath.exists());
 
@@ -294,7 +294,7 @@ public class GraphlabRunnable extends AbstractTwillRunnable {
             this.outputPath = outputPath;
         }
 
-        public File getGraphlabPath() {
+        public File getGraphLabPath() {
             return graphLabPath;
         }
 
@@ -321,7 +321,7 @@ public class GraphlabRunnable extends AbstractTwillRunnable {
 
         public static Arguments fromArray(String[] args) {
             Builder builder = new Builder();
-            builder.setGraphlabPath(new File(args[0]));
+            builder.setGraphLabPath(new File(args[0]));
             builder.setInputPath(new Path(args[1]));
             builder.setInputFormat(args[2]);
             builder.setOutputPath(new Path(args[3]));
@@ -336,7 +336,7 @@ public class GraphlabRunnable extends AbstractTwillRunnable {
 
             public Builder() {}
 
-            public Builder setGraphlabPath(File graphLabPath) {
+            public Builder setGraphLabPath(File graphLabPath) {
                 this.graphLabPath = graphLabPath;
                 return this;
             }

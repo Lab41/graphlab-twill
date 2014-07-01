@@ -83,7 +83,7 @@ public class Main {
         }
 
         String zkStr = args[0];
-        GraphlabRunnable.Arguments arguments = GraphlabRunnable.Arguments.fromArray(
+        GraphLabRunnable.Arguments arguments = GraphLabRunnable.Arguments.fromArray(
                 Arrays.copyOfRange(args, 1, args.length));
 
         final TwillRunnerService twillRunner = new YarnTwillRunnerService(new YarnConfiguration(), zkStr);
@@ -95,9 +95,9 @@ public class Main {
                 .setInstances(instanceCount)
                 .build();
 
-        String runnableName = "GraphlabRunnable";
+        String runnableName = "GraphLabRunnable";
 
-        TwillPreparer preparer = twillRunner.prepare(new GraphlabRunnable(), resources)
+        TwillPreparer preparer = twillRunner.prepare(new GraphLabRunnable(), resources)
                 .withArguments(runnableName, arguments.toArray())
                 .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)));
 
