@@ -17,23 +17,32 @@
 package org.lab41.graphlab.twill;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.apache.commons.io.filefilter.WildcardFileFilter;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.twill.api.*;
 import org.apache.twill.synchronization.DoubleBarrier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
 * Created by etryzelaar on 5/20/14.
 */
 public class GraphlabRunnable extends AbstractTwillRunnable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GraphlabRunnable.class);
 
     private static final int BARRIER_WAIT_TIME = 60;
     private static final TimeUnit BARRIER_WAIT_UNIT = TimeUnit.SECONDS;
@@ -52,6 +61,7 @@ public class GraphlabRunnable extends AbstractTwillRunnable {
     public void initialize(TwillContext context) {
         super.initialize(context);
         arguments = Arguments.fromArray(context.getArguments());
+        Preconditions.checkNotNull(arguments);
     }
 
     @Override
@@ -71,129 +81,283 @@ public class GraphlabRunnable extends AbstractTwillRunnable {
 
     @Override
     public void run() {
-        Preconditions.checkNotNull(arguments);
-
-        TwillContext context = getContext();
-        Preconditions.checkNotNull(context);
-
-        String graphlabPath = arguments.getGraphlabPath();
-        Preconditions.checkNotNull(graphlabPath);
-
-        String[] graphlabArgs = arguments.getGraphlabArgs();
-        Preconditions.checkNotNull(graphlabArgs);
-
-        List<String> args = new ArrayList<>();
-        args.add(graphlabPath);
-        Collections.addAll(args, graphlabArgs);
-
-        String zkStr = System.getenv("TWILL_ZK_CONNECT");
-        Preconditions.checkNotNull(zkStr);
-
-        int instanceCount = context.getInstanceCount();
-        String runId = context.getApplicationRunId().getId();
-
         try {
-            LOG.debug("creating barrier {} with {} parties", runId, instanceCount);
-
-            DoubleBarrier barrier = this.getContext().getDoubleBarrier(runId, instanceCount);
-
-            LOG.debug("entering barrier");
-
-            try {
-                barrier.enter(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
-
-                LOG.debug("entered barrier");
-
-                ProcessBuilder processBuilder = new ProcessBuilder(args)
-                        .redirectErrorStream(true);
-
-                Map<String, String> env = processBuilder.environment();
-                env.put("ZK_SERVERS", zkStr);
-                env.put("ZK_JOBNAME", "graphlab-workers");
-                env.put("ZK_NUMNODES", Integer.toString(instanceCount));
-
-                Process process = processBuilder.start();
-
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), Charsets.US_ASCII))) {
-                    String line = reader.readLine();
-                    while (line != null) {
-                        LOG.info(line);
-                        line = reader.readLine();
-                    }
-                }
-
-                // Ignore errors for now.
-                process.waitFor();
-            } finally {
-                LOG.debug("leaving barrier");
-
-                barrier.leave(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
-
-                LOG.debug("left barrier");
-            }
+            doBarrier();
 
             // FIXME: work around a Twill bug where Kafka won't send all the messages unless we sleep for a little bit.
             try {
                 TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            } catch (InterruptedException ignored) {
             }
-
         } catch (Exception e) {
             LOG.error("error", e);
             e.printStackTrace();
         }
     }
 
+    private void doBarrier() throws Exception {
+        TwillContext context = getContext();
+        Preconditions.checkNotNull(context);
+
+        int instanceCount = context.getInstanceCount();
+        String runId = context.getApplicationRunId().getId();
+
+        LOG.debug("creating barrier {} with {} parties", runId, instanceCount);
+
+        DoubleBarrier barrier = this.getContext().getDoubleBarrier(runId, instanceCount);
+
+        LOG.debug("entering barrier");
+
+        try {
+            barrier.enter(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
+
+            LOG.debug("entered barrier");
+
+            runProcess(instanceCount);
+
+        } finally {
+            LOG.debug("leaving barrier");
+
+            barrier.leave(BARRIER_WAIT_TIME, BARRIER_WAIT_UNIT);
+
+            LOG.debug("left barrier");
+        }
+    }
+
+    private void runProcess(int instanceCount) throws ExecutionException, InterruptedException, IOException {
+        FileSystem fileSystem = FileSystem.get(new Configuration());
+
+        File graphLabPath = arguments.getGraphlabPath();
+        Preconditions.checkNotNull(graphLabPath);
+        Preconditions.checkArgument(graphLabPath.exists());
+
+        Path inputPath = arguments.getInputPath();
+        Preconditions.checkNotNull(inputPath);
+        Preconditions.checkNotNull(fileSystem.exists(inputPath));
+
+        String inputFormat = arguments.getInputFormat();
+        Preconditions.checkNotNull(inputFormat);
+
+        Path outputPath = arguments.getOutputPath();
+        Preconditions.checkNotNull(outputPath);
+
+        String zkStr = System.getenv("TWILL_ZK_CONNECT");
+        Preconditions.checkNotNull(zkStr);
+
+        // Start building up the command line.
+        List<String> args = new ArrayList<>();
+        args.add(graphLabPath.toString());
+        args.add("--graph");
+        args.add(inputPath.toString());
+        args.add("--format");
+        args.add(inputFormat);
+
+        // We need to treat some algorithms specially.
+        String commandName = graphLabPath.getName();
+
+        switch (commandName) {
+            case "simple_coloring":
+                args.add("output");
+                args.add(outputPath.toString());
+                break;
+            case "TSC":
+                // do nothing. TSC outputs to stdout, so we'll have to capture it ourselves.
+                break;
+            default:
+                args.add("--saveprefix");
+                args.add(outputPath.toString());
+                break;
+        }
+
+        ProcessBuilder processBuilder = new ProcessBuilder(args);
+
+        Map<String, String> env = processBuilder.environment();
+
+        env.clear();
+        env.put("CLASSPATH", getHadoopClassPath());
+        env.put("ZK_SERVERS", zkStr);
+        env.put("ZK_JOBNAME", "graphLab-workers");
+        env.put("ZK_NUMNODES", Integer.toString(instanceCount));
+
+        if (!commandName.equals("TSC")) {
+            processBuilder.redirectErrorStream(true);
+        }
+
+        Process process = processBuilder.start();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        Future<Void> stdoutFuture;
+
+        if (commandName.equals("TSC")) {
+            // The TSC outputs to stdout, so capture and redirect it to our file.
+            stdoutFuture = executor.submit(captureInputStream(fileSystem, process.getInputStream(), outputPath));
+        } else {
+            // Otherwise, write the output to the log file.
+            stdoutFuture = executor.submit(logInputStream(process.getInputStream()));
+        }
+
+        // Also write the stderr to the log file.
+        Future<Void> stderrFuture = executor.submit(logInputStream(process.getErrorStream()));
+
+        // Ignore errors for now.
+        process.waitFor();
+
+        stdoutFuture.get();
+        stderrFuture.get();
+    }
+
+    private String getHadoopClassPath() throws IOException, InterruptedException, ExecutionException {
+
+        List<String> args = Lists.newArrayList();
+        args.add("hadoop");
+        args.add("classpath");
+
+        ProcessBuilder processBuilder = new ProcessBuilder(args);
+
+        Map<String, String> env = processBuilder.environment();
+
+        env.clear();
+
+        Process process = processBuilder.start();
+
+        StringWriter writer = new StringWriter();
+        IOUtils.copy(process.getInputStream(), writer, Charsets.US_ASCII);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<Void> errFuture = executor.submit(logInputStream(process.getErrorStream()));
+
+        process.waitFor();
+        errFuture.get();
+
+        String classPath = writer.toString();
+        LOG.info("hadoop classpath: " + classPath);
+
+        // Sometimes the classpath includes globs.
+        List<String> classPathList = Lists.newArrayList();
+
+        for (String pattern : classPath.split(File.pathSeparator)) {
+            File file = new File(pattern);
+            File dir = file.getParentFile();
+            String[] children = dir.list(new WildcardFileFilter(file.getName()));
+
+            if (children != null) {
+                for (String path : children) {
+                    String f = new File(dir, path).toString();
+                    LOG.error(f);
+                    classPathList.add(f);
+                }
+            }
+        }
+
+        return Joiner.on(File.pathSeparator).join(classPathList);
+    }
+
+    private Callable<Void> captureInputStream(final FileSystem fileSystem, final InputStream is, final Path outputPath) {
+        return new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                try (FSDataOutputStream os = fileSystem.create(outputPath)) {
+                    IOUtils.copy(is, os);
+                }
+                return null;
+            }
+        };
+    }
+
+    private Callable<Void> logInputStream(final InputStream is) {
+        return new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, Charsets.US_ASCII))) {
+                    String line = reader.readLine();
+                    while (line != null) {
+                        LOG.info(line);
+                        line = reader.readLine();
+                    }
+                }
+                return null;
+            }
+        };
+    }
+
     public static class Arguments {
-        private final String graphlabPath;
-        private final String[] graphlabArgs;
+        private final File graphLabPath;
+        private final Path inputPath;
+        private final String inputFormat;
+        private final Path outputPath;
 
-        public Arguments(String graphlabPath, String[] graphlabArgs) {
-            this.graphlabPath = graphlabPath;
-            this.graphlabArgs = graphlabArgs;
+        public Arguments(File graphLabPath, Path inputPath, String inputFormat, Path outputPath) {
+            this.graphLabPath = graphLabPath;
+            this.inputPath = inputPath;
+            this.inputFormat = inputFormat;
+            this.outputPath = outputPath;
         }
 
-        public String getGraphlabPath() {
-            return graphlabPath;
+        public File getGraphlabPath() {
+            return graphLabPath;
         }
 
-        public String[] getGraphlabArgs() {
-            return graphlabArgs;
+        public Path getInputPath() {
+            return inputPath;
+        }
+
+        public String getInputFormat() {
+            return inputFormat;
+        }
+
+        public Path getOutputPath() {
+            return outputPath;
         }
 
         public String[] toArray() {
-            String[] result = new String[1 + graphlabArgs.length];
-            result[0] = graphlabPath;
-            System.arraycopy(graphlabArgs, 0, result, 1, graphlabArgs.length);
+            String[] result = new String[4];
+            result[0] = graphLabPath.toString();
+            result[1] = inputPath.toString();
+            result[2] = inputFormat;
+            result[3] = outputPath.toString();
             return result;
         }
 
         public static Arguments fromArray(String[] args) {
             Builder builder = new Builder();
-            builder.setGraphlabPath(args[0]);
-            builder.setGraphlabArgs(Arrays.copyOfRange(args, 1, args.length));
+            builder.setGraphlabPath(new File(args[0]));
+            builder.setInputPath(new Path(args[1]));
+            builder.setInputFormat(args[2]);
+            builder.setOutputPath(new Path(args[3]));
             return builder.createArguments();
         }
 
         public static class Builder {
-            private String graphlabPath;
-            private String[] graphlabArgs;
+            private File graphLabPath;
+            private Path inputPath;
+            private String inputFormat;
+            private Path outputPath;
 
             public Builder() {}
 
-            public Builder setGraphlabPath(String graphlabPath) {
-                this.graphlabPath = graphlabPath;
+            public Builder setGraphlabPath(File graphLabPath) {
+                this.graphLabPath = graphLabPath;
                 return this;
             }
 
-            public Builder setGraphlabArgs(String... graphlabArgs) {
-                this.graphlabArgs = graphlabArgs;
+            public Builder setInputPath(Path inputPath) {
+                this.inputPath = inputPath;
+                return this;
+            }
+
+            public Builder setInputFormat(String inputFormat) {
+                this.inputFormat = inputFormat;
+                return this;
+            }
+
+            public Builder setOutputPath(Path outputPath) {
+                this.outputPath = outputPath;
                 return this;
             }
 
             public Arguments createArguments() {
-                return new Arguments(graphlabPath, graphlabArgs);
+                return new Arguments(graphLabPath, inputPath, inputFormat, outputPath);
             }
         }
     }

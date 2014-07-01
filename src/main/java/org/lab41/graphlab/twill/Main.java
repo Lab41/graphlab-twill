@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
 
@@ -41,16 +42,17 @@ public class Main {
         options.addOption("h", "help", false, "print this message");
         options.addOption("i", "instances", true, "number of instances");
         options.addOption("t", "threads", true, "number of threads");
+        options.addOption("debug", false, "enable debugging");
 
         int instanceCount = 1;
         int virtualCores = 1;
+        boolean debug = false;
 
         try {
             CommandLine line = parser.parse(options, args, true);
 
             if (line.hasOption("help")) {
-                HelpFormatter formatter = new HelpFormatter();
-                formatter.printHelp("java -cp graphlab-twill-1.0-SNAPSHOT.jar org.lab41.graphlab.twill.Main [options] zookeeper-address graphlab-path", options);
+                printHelp(options);
                 System.exit(0);
             }
 
@@ -64,6 +66,10 @@ public class Main {
                 virtualCores = Integer.parseInt(option);
             }
 
+            if (line.hasOption("debug")) {
+                debug = true;
+            }
+
             args = line.getArgs();
 
         } catch (ParseException e) {
@@ -71,8 +77,8 @@ public class Main {
             System.exit(1);
         }
 
-        if (args.length < 2) {
-            System.err.println("Arguments format: <host:port of zookeeper server> graphlab-path [graphlab-args]");
+        if (args.length < 4) {
+            printHelp(options);
             System.exit(1);
         }
 
@@ -89,11 +95,17 @@ public class Main {
                 .setInstances(instanceCount)
                 .build();
 
-        final TwillController controller = twillRunner.prepare(new GraphlabRunnable(), resources)
-                .withArguments("GraphlabRunnable", arguments.toArray())
-                .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)))
-                //.enableDebugging(true)
-                .start();
+        String runnableName = "GraphlabRunnable";
+
+        TwillPreparer preparer = twillRunner.prepare(new GraphlabRunnable(), resources)
+                .withArguments(runnableName, arguments.toArray())
+                .addLogHandler(new PrinterLogHandler(new PrintWriter(System.out, true)));
+
+        if (debug) {
+            preparer.enableDebugging(true);
+        }
+
+        final TwillController controller = preparer.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
@@ -104,9 +116,14 @@ public class Main {
             }
         });
 
-        LOG.debug("before getting completion");
-
         try {
+            /*
+            // Try to catch the debug port.
+            if (debug) {
+                waitForDebugPort(controller, runnableName, 300);
+            }
+            */
+
             Services.getCompletionFuture(controller).get();
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
@@ -115,4 +132,37 @@ public class Main {
         LOG.debug("after shutting down");
     }
 
+    private static void printHelp(Options options) {
+        HelpFormatter formatter = new HelpFormatter();
+        formatter.printHelp(
+                "java" +
+                " -cp graphLab-twill-1.0-SNAPSHOT.jar" +
+                " org.lab41.graphLab.twill.Main" +
+                " [options]" +
+                " zookeeper-address" +
+                " graphLab-path" +
+                " input-path" +
+                " input-format" +
+                " output-path",
+                options);
+    }
+
+    private static boolean waitForDebugPort(TwillController controller, String runnable, int timeLimit) throws InterruptedException {
+        long millis = 0;
+        while (millis < 1000 * timeLimit) {
+            ResourceReport report = controller.getResourceReport();
+            if (report == null || report.getRunnableResources(runnable) == null) {
+                continue;
+            }
+            for (TwillRunResources resources : report.getRunnableResources(runnable)) {
+                if (resources.getDebugPort() != null) {
+                    System.out.println("runnable debug port: " + resources.getHost() + ":" + resources.getDebugPort());
+                    return true;
+                }
+            }
+            TimeUnit.MILLISECONDS.sleep(100);
+            millis += 100;
+        }
+        return false;
+    }
 }
