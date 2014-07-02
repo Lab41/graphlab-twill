@@ -187,26 +187,38 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        Future<Void> stdoutFuture;
+        try {
+            Future<Void> stdoutFuture;
 
-        if (commandName.equals("TSC")) {
-            // The TSC outputs to stdout, so capture and redirect it to our file.
-            stdoutFuture = executor.submit(captureInputStream(fileSystem, process.getInputStream(), outputPath));
-        } else {
-            // Otherwise, write the output to the log file.
-            stdoutFuture = executor.submit(logInputStream(process.getInputStream()));
+            if (commandName.equals("TSC")) {
+                // The TSC outputs to stdout, so capture and redirect it to our file.
+                stdoutFuture = executor.submit(captureInputStream(fileSystem, process.getInputStream(), outputPath));
+            } else {
+                // Otherwise, write the output to the log file.
+                stdoutFuture = executor.submit(logInputStream(process.getInputStream()));
+            }
+
+            // Also write the stderr to the log file.
+            Future<Void> stderrFuture = executor.submit(logInputStream(process.getErrorStream()));
+
+            // Ignore errors for now.
+            process.waitFor();
+
+            stdoutFuture.get();
+            stderrFuture.get();
+        } finally {
+            executor.shutdown();
         }
-
-        // Also write the stderr to the log file.
-        Future<Void> stderrFuture = executor.submit(logInputStream(process.getErrorStream()));
-
-        // Ignore errors for now.
-        process.waitFor();
-
-        stdoutFuture.get();
-        stderrFuture.get();
     }
 
+    /**
+     * GraphLab requires all the hadoop path globs to be expanded.
+     * @return the classpath.
+     *
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ExecutionException
+     */
     private String getHadoopClassPath() throws IOException, InterruptedException, ExecutionException {
 
         List<String> args = Lists.newArrayList();
@@ -225,10 +237,14 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
         IOUtils.copy(process.getInputStream(), writer, Charsets.US_ASCII);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        Future<Void> errFuture = executor.submit(logInputStream(process.getErrorStream()));
+        try {
+            Future<Void> errFuture = executor.submit(logInputStream(process.getErrorStream()));
 
-        process.waitFor();
-        errFuture.get();
+            process.waitFor();
+            errFuture.get();
+        } finally {
+            executor.shutdown();
+        }
 
         String classPath = writer.toString();
         LOG.info("hadoop classpath: " + classPath);
