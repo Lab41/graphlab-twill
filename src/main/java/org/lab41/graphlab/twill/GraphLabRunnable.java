@@ -128,18 +128,18 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
         FileSystem fileSystem = FileSystem.get(new Configuration());
 
         File graphLabPath = arguments.getGraphLabPath();
-        Preconditions.checkNotNull(graphLabPath);
-        Preconditions.checkArgument(graphLabPath.exists());
+        Preconditions.checkNotNull(graphLabPath, "graphlab path is null");
+        Preconditions.checkArgument(graphLabPath.exists(), "graphlab path does not exist");
 
         Path inputPath = arguments.getInputPath();
-        Preconditions.checkNotNull(inputPath);
-        Preconditions.checkNotNull(fileSystem.exists(inputPath));
+        Preconditions.checkNotNull(inputPath, "input path is null");
+        Preconditions.checkNotNull(fileSystem.exists(inputPath), "input path does not exist");
 
         String inputFormat = arguments.getInputFormat();
-        Preconditions.checkNotNull(inputFormat);
+        Preconditions.checkNotNull(inputFormat, "input format is null");
 
         Path outputPath = arguments.getOutputPath();
-        Preconditions.checkNotNull(outputPath);
+        Preconditions.checkNotNull(outputPath, "output path is null");
 
         String zkStr = System.getenv("TWILL_ZK_CONNECT");
         Preconditions.checkNotNull(zkStr);
