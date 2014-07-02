@@ -222,7 +222,11 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
     private String getHadoopClassPath() throws IOException, InterruptedException, ExecutionException {
 
         List<String> args = Lists.newArrayList();
-        args.add("hadoop");
+
+        String hadoopCommonHome = System.getenv("HADOOP_COMMON_HOME");
+        Preconditions.checkNotNull(hadoopCommonHome);
+
+        args.add(hadoopCommonHome + "/bin/hadoop");
         args.add("classpath");
 
         ProcessBuilder processBuilder = new ProcessBuilder(args);
