@@ -231,10 +231,6 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
 
         ProcessBuilder processBuilder = new ProcessBuilder(args);
 
-        Map<String, String> env = processBuilder.environment();
-
-        env.clear();
-
         Process process = processBuilder.start();
 
         StringWriter writer = new StringWriter();
