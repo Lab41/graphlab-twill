@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+ROOT_DIR=`dirname $0`/..
+
+# Grab the hadoop classpath. We need to manually expand the globs.
+export CLASSPATH=$(
+   for i in `$HADOOP_COMMON_HOME/bin/hadoop classpath | sed 's/:/ /g'`; do
+       echo $i
+   done | xargs | sed 's/ /:/g'
+)
+
+export CLASSPATH="$ROOT_DIR/target/graphlab-twill-1.0-SNAPSHOT.jar:$CLASSPATH"
+
+$JAVA_HOME/bin/java \
+    $JAVA_OPTS \
+    -cp $CLASSPATH \
+    org.lab41.graphlab.twill.Main \
+    "$@"
