@@ -38,7 +38,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
-* Created by etryzelaar on 5/20/14.
+* GraphLabRunnable drives a single instance of graphlab.
 */
 public class GraphLabRunnable extends AbstractTwillRunnable {
 
