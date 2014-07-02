@@ -336,6 +336,8 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
         }
 
         public static Arguments fromArray(String[] args) {
+            Preconditions.checkArgument(args.length == 4, "not enough arguments provided");
+
             Builder builder = new Builder();
             builder.setGraphLabPath(new File(args[0]));
             builder.setInputPath(new Path(args[1]));
