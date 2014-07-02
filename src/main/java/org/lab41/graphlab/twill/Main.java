@@ -77,7 +77,7 @@ public class Main {
             System.exit(1);
         }
 
-        if (args.length < 4) {
+        if (args.length != 5) {
             printHelp(options);
             System.exit(1);
         }
