@@ -224,12 +224,27 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
         List<String> args = Lists.newArrayList();
 
         String hadoopCommonHome = System.getenv("HADOOP_COMMON_HOME");
-        Preconditions.checkNotNull(hadoopCommonHome);
 
-        args.add(hadoopCommonHome + "/bin/hadoop");
+        if (hadoopCommonHome == null) {
+            args.add("hadoop");
+        } else {
+            args.add(hadoopCommonHome + "/bin/hadoop");
+        }
+
         args.add("classpath");
 
         ProcessBuilder processBuilder = new ProcessBuilder(args);
+
+        Map<String, String> env = processBuilder.environment();
+
+        // Inside a yarn application, HADOOP_CONF_DIR points at a path specific to the node manager and is not
+        // intended to be used by other programs.
+        env.remove("HADOOP_CONF_DIR");
+
+        String hadoopClientConfDir = env.get("HADOOP_CLIENT_CONF_DIR");
+        if (hadoopClientConfDir != null) {
+            env.put("HADOOP_CONF_DIR", hadoopClientConfDir);
+        }
 
         Process process = processBuilder.start();
 
