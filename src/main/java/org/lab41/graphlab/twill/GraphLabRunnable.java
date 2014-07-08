@@ -183,6 +183,8 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
             processBuilder.redirectErrorStream(true);
         }
 
+        LOG.info("executing: " + args);
+
         Process process = processBuilder.start();
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -202,7 +204,9 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
             Future<Void> stderrFuture = executor.submit(logInputStream(process.getErrorStream()));
 
             // Ignore errors for now.
-            process.waitFor();
+            int exitCode = process.waitFor();
+
+            LOG.info("process exited with " + exitCode);
 
             stdoutFuture.get();
             stderrFuture.get();
@@ -262,21 +266,27 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
         }
 
         String classPath = writer.toString();
-        LOG.info("hadoop classpath: " + classPath);
 
         // Sometimes the classpath includes globs.
         List<String> classPathList = Lists.newArrayList();
 
         for (String pattern : classPath.split(File.pathSeparator)) {
+            LOG.debug("classpath pattern: " + pattern);
+
             File file = new File(pattern);
             File dir = file.getParentFile();
-            String[] children = dir.list(new WildcardFileFilter(file.getName()));
+            if (dir == null) {
+                // We must be a top-level path, so just carry it through to the classpath.
+                classPathList.add(file.toString());
+            } else {
+                String[] children = dir.list(new WildcardFileFilter(file.getName()));
 
-            if (children != null) {
-                for (String path : children) {
-                    String f = new File(dir, path).toString();
-                    LOG.error(f);
-                    classPathList.add(f);
+                if (children != null) {
+                    for (String path : children) {
+                        String f = new File(dir, path).toString();
+                        LOG.debug("discovered jar: " + f);
+                        classPathList.add(f);
+                    }
                 }
             }
         }
