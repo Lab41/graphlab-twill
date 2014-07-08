@@ -183,6 +183,8 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
             processBuilder.redirectErrorStream(true);
         }
 
+        LOG.info("executing: " + args);
+
         Process process = processBuilder.start();
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -202,7 +204,9 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
             Future<Void> stderrFuture = executor.submit(logInputStream(process.getErrorStream()));
 
             // Ignore errors for now.
-            process.waitFor();
+            int exitCode = process.waitFor();
+
+            LOG.info("process exited with " + exitCode);
 
             stdoutFuture.get();
             stderrFuture.get();
