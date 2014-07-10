@@ -157,7 +157,7 @@ public class GraphLabRunnable extends AbstractTwillRunnable {
 
         switch (commandName) {
             case "simple_coloring":
-                args.add("output");
+                args.add("--output");
                 args.add(outputPath.toString());
                 break;
             case "TSC":
